@@ -7,22 +7,51 @@ import {z} from 'zod';
 
 const FormSchema = z.object({
   id: z.string(),
-  customerId: z.string(),
-  amount: z.coerce.number(),
-  status: z.enum(['pending', 'paid']),
+  customerId: z.string({
+    invalid_type_error: 'Please select a customer.',
+  }),
+  amount: z.coerce
+  .number()
+  .gt(0, {message: 'Please enter an amount greater than $0.'}),
+  status: z.enum(['pending', 'paid'], {
+    invalid_type_error: 'Please select an invoice status.',
+  }),
   date: z.string(),
 });
+
+export type State = {
+  errors?: {
+    customerId?: string[];
+    amount?: string[];
+    status?: string[];
+  };
+  message?: string | null;
+}
 
 const sql = postgres(process.env.POSTGRES_URL!, {ssl: 'require'});
 
 const CreateInvoice = FormSchema.omit({id: true, date: true});
 
-export async function createInvoice(formData: FormData) {
-  const {customerId, amount, status} = CreateInvoice.parse({
+export async function createInvoice(prevState: State, formData: FormData) {
+  // validate form fields using Zod
+  const validateFormFields = CreateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
   })
+
+  // if form validation fails, return errors early. Otherwise, continue.
+  if (!validateFormFields.success) {
+    console.log('ERROR :~~~~>', validateFormFields);
+    
+    return {
+      errors: validateFormFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failt to create invoice.',
+    };
+  }
+
+  //prepare data for insertion into the database
+  const {customerId, amount, status} = validateFormFields.data;
   const amountInCents = amount * 100;
   const date = new Date().toISOString().split('T')[0];
 
