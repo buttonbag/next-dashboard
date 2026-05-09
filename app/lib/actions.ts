@@ -75,34 +75,48 @@ export async function createInvoice(prevState: State, formData: FormData) {
 
 const UpdateInvoice = FormSchema.omit({id: true, date: true});
 
-export async function updateInvoice(id:string, formData: FormData) {
-  const {customerId, amount, status} = UpdateInvoice.parse({
+export async function updateInvoice(
+  id: string, 
+  prevState: State, 
+  formData: FormData,
+) {
+  const validateFormFields = UpdateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
     status: formData.get('status'),
-  })
+  });
 
+  // if form validation fails, return errors early. Else, continue
+  if (!validateFormFields.success) {
+    console.log('ERROR: ~~~~~~>' , validateFormFields);
+    
+    return {
+      errors:  validateFormFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to update invoice.',
+    }
+  }
+
+  // prepare data for insertion into the database
+  const {customerId, amount, status} = validateFormFields.data;
   const amountInCents = amount * 100;
+
   try {
     await sql`
-    UPDATE invoices
-    SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-    WHERE id = ${id}
-    `  
+      UPDATE invoices
+      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
+      WHERE id = ${id}
+    `;
   } catch (error) {
     console.log(error);
-    return {
-      message: 'Database Error: Fauled to update invoice'
-    }
-
-    revalidatePath('/dashboard/invoices');
-    redirect('/dashboard/invoices');    
+    return { message: 'Database Error: Failed to Update Invoice.' };
   }
+
+  console.log(customerId, amount, status);  
+  revalidatePath('/dashboard/invoices');
+  redirect('/dashboard/invoices');    
 }
 
 export async function deleteInvoice(id: string) {
-
-  throw new Error('Failed to delete invoice');
 
   await sql`
   DELETE FROM invoices 
